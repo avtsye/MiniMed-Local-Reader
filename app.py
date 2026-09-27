@@ -26,6 +26,7 @@ def main():
         args.test_gatt,
         args.scan_test,
         args.discover_ble,
+        args.monitor_ble,
         args.simulate,
     )
     if not any(selected):
