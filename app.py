@@ -7,21 +7,30 @@ from storage.db import open_db
 def main():
     p = argparse.ArgumentParser(description="MiniMed Local Reader - safe Windows/read-only POC")
     p.add_argument("--probe-windows", action="store_true", help="Check Windows BLE/WinRT capabilities")
+    p.add_argument("--test-gatt", action="store_true", help="Advertise a project-owned local GATT test service")
+    p.add_argument("--seconds", type=int, default=15, help="Duration for --test-gatt (1-120 seconds)")
     p.add_argument("--simulate", action="store_true", help="Run the local read-only simulator")
     p.add_argument("--db", default="minimed_local.sqlite")
     args = p.parse_args()
 
-    if not args.probe_windows and not args.simulate:
+    if not args.probe_windows and not args.simulate and not args.test_gatt:
         print("MiniMed Local Reader - Windows POC")
         print("Safety mode: READ-ONLY / diagnostics; pump protocol is disabled.")
         print()
         print("Run one of:")
         print("  python app.py --probe-windows")
+        print("  python app.py --test-gatt")
         print("  python app.py --simulate")
         return
 
     if args.probe_windows:
         print(json.dumps(WindowsWinRTTransport().probe(), indent=2, ensure_ascii=False))
+
+    if args.test_gatt:
+        from transport.windows_gatt_test import run
+        print("Starting local test-only GATT advertisement...")
+        print(json.dumps(run(args.seconds), indent=2, ensure_ascii=False))
+
     if args.simulate:
         t = SimulatorTransport(); t.connect()
         for name in ("read_device_info", "read_status", "read_cgm", "read_history"):
