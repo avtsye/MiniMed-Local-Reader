@@ -30,6 +30,7 @@ def main():
         args.discover_ble,
         args.monitor_ble,
         args.mobile_emulator,
+        args.session_demo,
         args.simulate,
     )
     if not any(selected):
