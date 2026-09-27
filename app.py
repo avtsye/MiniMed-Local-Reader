@@ -6,10 +6,19 @@ from storage.db import open_db
 
 def main():
     p = argparse.ArgumentParser(description="MiniMed Local Reader - safe Windows/read-only POC")
-    p.add_argument("--probe-windows", action="store_true")
-    p.add_argument("--simulate", action="store_true")
+    p.add_argument("--probe-windows", action="store_true", help="Check Windows BLE/WinRT capabilities")
+    p.add_argument("--simulate", action="store_true", help="Run the local read-only simulator")
     p.add_argument("--db", default="minimed_local.sqlite")
     args = p.parse_args()
+
+    if not args.probe_windows and not args.simulate:
+        print("MiniMed Local Reader - Windows POC")
+        print("Safety mode: READ-ONLY / diagnostics; pump protocol is disabled.")
+        print()
+        print("Run one of:")
+        print("  python app.py --probe-windows")
+        print("  python app.py --simulate")
+        return
 
     if args.probe_windows:
         print(json.dumps(WindowsWinRTTransport().probe(), indent=2, ensure_ascii=False))
@@ -18,6 +27,7 @@ def main():
         for name in ("read_device_info", "read_status", "read_cgm", "read_history"):
             print(name, t.execute(Operation(name)).decode())
         t.disconnect()
-    con = open_db(args.db); con.close()
+        con = open_db(args.db); con.close()
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
