@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--mobile-emulator", action="store_true")
     parser.add_argument("--emulator-client", action="store_true")
     parser.add_argument("--loopback-test", action="store_true")
+    parser.add_argument("--pipeline-test", action="store_true")
     parser.add_argument("--session-demo", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
@@ -50,6 +51,7 @@ def main():
         print("  python app.py --mobile-emulator")
         print("  python app.py --emulator-client")
         print("  python app.py --loopback-test")
+        print("  python app.py --pipeline-test")
         print("  python app.py --session-demo")
         print("  python app.py --simulate")
         return
@@ -71,6 +73,11 @@ def main():
         from protocol.session_simulator import run_demo
         print("Running local read-only session simulator...")
         print(json.dumps(run_demo(args.db), indent=2, ensure_ascii=False))
+
+    if args.pipeline_test:
+        from protocol.data_pipeline import run as run_pipeline
+        print("Running simulated end-to-end data pipeline...")
+        print(json.dumps(run_pipeline(args.db), indent=2, ensure_ascii=False))
 
     if args.loopback_test:
         from transport.emulator_loopback import run as run_loopback
