@@ -6,7 +6,8 @@ import asyncio
 from uuid import UUID
 
 TEST_SERVICE_UUID = UUID("a46b7b20-9b67-4ad6-9d18-4b694c0bde01")
-TEST_CHARACTERISTIC_UUID = UUID("a46b7b20-9b67-4ad6-9d18-4b694c0bde02")\nTEST_VALUE = b"MiniMedLocalReader-Test"
+TEST_CHARACTERISTIC_UUID = UUID("a46b7b20-9b67-4ad6-9d18-4b694c0bde02")
+TEST_VALUE = b"MiniMedLocalReader-Test"
 
 async def run_test_service(seconds: int = 15) -> dict:
     if seconds < 1 or seconds > 120:
