@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--monitor-ble", action="store_true")
     parser.add_argument("--mobile-emulator", action="store_true")
     parser.add_argument("--emulator-client", action="store_true")
+    parser.add_argument("--loopback-test", action="store_true")
     parser.add_argument("--session-demo", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
@@ -47,6 +48,7 @@ def main():
         print("  python app.py --monitor-ble")
         print("  python app.py --mobile-emulator")
         print("  python app.py --emulator-client")
+        print("  python app.py --loopback-test")
         print("  python app.py --session-demo")
         print("  python app.py --simulate")
         return
@@ -68,6 +70,11 @@ def main():
         from protocol.session_simulator import run_demo
         print("Running local read-only session simulator...")
         print(json.dumps(run_demo(args.db), indent=2, ensure_ascii=False))
+
+    if args.loopback_test:
+        from transport.emulator_loopback import run as run_loopback
+        print("Running single-computer software loopback (no Bluetooth radio)...")
+        print(json.dumps(run_loopback(args.db), indent=2, ensure_ascii=False))
 
     if args.emulator_client:
         from transport.windows_emulator_client import run as run_emulator_client
