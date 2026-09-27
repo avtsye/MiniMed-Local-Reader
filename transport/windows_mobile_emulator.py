@@ -1,8 +1,7 @@
 """Local Mobile-side BLE architecture emulator.
 
-Uses project-owned UUIDs only. It does not implement MiniMed pairing, SAKE,
-pump commands, or therapy operations. The exposed characteristics are
-read-only diagnostics for validating the Windows GATT-server architecture.
+Uses project-owned UUIDs only. No MiniMed pairing/protocol, pump commands,
+BLE writes, or therapy operations are implemented.
 """
 import asyncio
 from uuid import UUID
@@ -16,12 +15,14 @@ VALUES = {
     STATE_UUID: b"READY_READ_ONLY",
 }
 
-async def _create_readonly_characteristic(service, uuid, value, counters, session_log=None):
+
+async def _create_readonly_characteristic(service, uuid, value, counters, session_log):
     from winrt.windows.devices.bluetooth.genericattributeprofile import (
         GattCharacteristicProperties,
         GattLocalCharacteristicParameters,
         GattProtectionLevel,
     )
+
     params = GattLocalCharacteristicParameters()
     params.characteristic_properties = GattCharacteristicProperties.READ
     params.read_protection_level = GattProtectionLevel.PLAIN
@@ -50,6 +51,7 @@ async def _create_readonly_characteristic(service, uuid, value, counters, sessio
     characteristic.add_read_requested(on_read_requested)
     return characteristic
 
+
 async def run_emulator(seconds=30, db_path=None):
     if seconds < 1 or seconds > 300:
         raise ValueError("seconds must be between 1 and 300")
@@ -71,17 +73,32 @@ async def run_emulator(seconds=30, db_path=None):
 
     counters = {str(INFO_UUID): 0, str(STATE_UUID): 0}
     keepalive = []
+    session_log = None
+
     try:
-        keepalive.append(await _create_readonly_characteristic(provider.service, INFO_UUID, VALUES[INFO_UUID], counters, session_log))
-        keepalive.append(await _create_readonly_characteristic(provider.service, STATE_UUID, VALUES[STATE_UUID], counters, session_log))
+        if db_path is not None:
+            from protocol.emulator_session import EmulatorSessionLog
+            session_log = EmulatorSessionLog(db_path)
+            session_log.start(SERVICE_UUID)
+
+        keepalive.append(await _create_readonly_characteristic(
+            provider.service, INFO_UUID, VALUES[INFO_UUID], counters, session_log
+        ))
+        keepalive.append(await _create_readonly_characteristic(
+            provider.service, STATE_UUID, VALUES[STATE_UUID], counters, session_log
+        ))
+
         provider.start_advertising()
         await asyncio.sleep(seconds)
+
+        # Count before closing; the final close event is added in finally.
+        db_events_before_close = session_log.event_count() if session_log is not None else 0
         return {
             **base,
             "started": True,
             "seconds": seconds,
             "advertisement_status": str(provider.advertisement_status),
-            "db_events": session_log.event_count() if session_log is not None else 0,
+            "db_events_before_close": db_events_before_close,
             "characteristics": [
                 {"uuid": str(INFO_UUID), "mode": "read-only", "reads": counters[str(INFO_UUID)]},
                 {"uuid": str(STATE_UUID), "mode": "read-only", "reads": counters[str(STATE_UUID)]},
@@ -93,8 +110,11 @@ async def run_emulator(seconds=30, db_path=None):
         except Exception:
             pass
         if session_log is not None:
-            session_log.finish()
-            session_log.close_db()
+            try:
+                session_log.finish()
+            finally:
+                session_log.close_db()
+
 
 def run(seconds=30, db_path=None):
     try:
