@@ -54,6 +54,30 @@ async def run_test_service(seconds: int = 15) -> dict:
     if characteristic is None:
         return {**base, "started": False, "reason": "No local characteristic was created"}
 
+    read_count = 0
+    read_event = asyncio.Event()
+
+    def on_read_requested(sender, args):
+        nonlocal read_count
+        async def respond():
+            nonlocal read_count
+            try:
+                request = await args.get_request_async()
+                if request is None:
+                    return
+                from winrt.windows.storage.streams import DataWriter
+                writer = DataWriter()
+                writer.write_bytes(TEST_VALUE)
+                request.respond_with_value(writer.detach_buffer())
+                read_count += 1
+                read_event.set()
+            except Exception:
+                # Test harness only: keep advertising even if one client read fails.
+                pass
+        asyncio.create_task(respond())
+
+    characteristic.add_read_requested(on_read_requested)
+
     start_variant = None
     try:
         provider.start_advertising()
@@ -87,6 +111,8 @@ async def run_test_service(seconds: int = 15) -> dict:
             "start_variant": start_variant,
             "advertisement_status": str(provider.advertisement_status),
             "characteristic_mode": "read-only",
+            "read_requests": read_count,
+            "test_value": TEST_VALUE.decode("ascii"),
         }
     finally:
         try:
