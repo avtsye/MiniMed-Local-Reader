@@ -31,6 +31,7 @@ def main():
         args.discover_ble,
         args.monitor_ble,
         args.mobile_emulator,
+        args.emulator_client,
         args.session_demo,
         args.simulate,
     )
