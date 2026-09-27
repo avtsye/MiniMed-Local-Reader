@@ -33,6 +33,7 @@ def main():
         args.monitor_ble,
         args.mobile_emulator,
         args.emulator_client,
+        args.loopback_test,
         args.session_demo,
         args.simulate,
     )
