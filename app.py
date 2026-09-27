@@ -35,6 +35,7 @@ def main():
         args.mobile_emulator,
         args.emulator_client,
         args.loopback_test,
+        args.pipeline_test,
         args.session_demo,
         args.simulate,
     )
