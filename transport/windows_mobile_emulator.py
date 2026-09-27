@@ -16,7 +16,7 @@ VALUES = {
     STATE_UUID: b"READY_READ_ONLY",
 }
 
-async def _create_readonly_characteristic(service, uuid, value, counters):
+async def _create_readonly_characteristic(service, uuid, value, counters, session_log=None):
     from winrt.windows.devices.bluetooth.genericattributeprofile import (
         GattCharacteristicProperties,
         GattLocalCharacteristicParameters,
@@ -41,6 +41,8 @@ async def _create_readonly_characteristic(service, uuid, value, counters):
                 writer.write_bytes(value)
                 request.respond_with_value(writer.detach_buffer())
                 counters[str(uuid)] += 1
+                if session_log is not None:
+                    session_log.record_read(uuid)
             except Exception:
                 pass
         asyncio.create_task(respond())
@@ -48,7 +50,7 @@ async def _create_readonly_characteristic(service, uuid, value, counters):
     characteristic.add_read_requested(on_read_requested)
     return characteristic
 
-async def run_emulator(seconds=30):
+async def run_emulator(seconds=30, db_path=None):
     if seconds < 1 or seconds > 300:
         raise ValueError("seconds must be between 1 and 300")
 
@@ -70,8 +72,8 @@ async def run_emulator(seconds=30):
     counters = {str(INFO_UUID): 0, str(STATE_UUID): 0}
     keepalive = []
     try:
-        keepalive.append(await _create_readonly_characteristic(provider.service, INFO_UUID, VALUES[INFO_UUID], counters))
-        keepalive.append(await _create_readonly_characteristic(provider.service, STATE_UUID, VALUES[STATE_UUID], counters))
+        keepalive.append(await _create_readonly_characteristic(provider.service, INFO_UUID, VALUES[INFO_UUID], counters, session_log))
+        keepalive.append(await _create_readonly_characteristic(provider.service, STATE_UUID, VALUES[STATE_UUID], counters, session_log))
         provider.start_advertising()
         await asyncio.sleep(seconds)
         return {
@@ -79,6 +81,7 @@ async def run_emulator(seconds=30):
             "started": True,
             "seconds": seconds,
             "advertisement_status": str(provider.advertisement_status),
+            "db_events": session_log.event_count() if session_log is not None else 0,
             "characteristics": [
                 {"uuid": str(INFO_UUID), "mode": "read-only", "reads": counters[str(INFO_UUID)]},
                 {"uuid": str(STATE_UUID), "mode": "read-only", "reads": counters[str(STATE_UUID)]},
@@ -89,10 +92,13 @@ async def run_emulator(seconds=30):
             provider.stop_advertising()
         except Exception:
             pass
+        if session_log is not None:
+            session_log.finish()
+            session_log.close_db()
 
-def run(seconds=30):
+def run(seconds=30, db_path=None):
     try:
-        return asyncio.run(run_emulator(seconds))
+        return asyncio.run(run_emulator(seconds, db_path))
     except Exception as exc:
         return {
             "started": False,
