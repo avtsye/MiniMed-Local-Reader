@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--test-gatt", action="store_true")
     parser.add_argument("--scan-test", action="store_true")
     parser.add_argument("--discover-ble", action="store_true")
+    parser.add_argument("--monitor-ble", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
     parser.add_argument("--db", default="minimed_local.sqlite")
@@ -36,6 +37,7 @@ def main():
         print("  python app.py --test-gatt")
         print("  python app.py --scan-test")
         print("  python app.py --discover-ble")
+        print("  python app.py --monitor-ble")
         print("  python app.py --simulate")
         return
 
@@ -51,6 +53,11 @@ def main():
         from transport.windows_test_scanner import run as run_scan
         print("Scanning only for the project-owned GATT test UUID...")
         print(json.dumps(run_scan(args.seconds), indent=2, ensure_ascii=False))
+
+    if args.monitor_ble:
+        from transport.windows_ble_monitor import run as run_monitor
+        print("Passive BLE signal monitor (no pairing/connections/writes)...")
+        print(json.dumps(run_monitor(args.seconds), indent=2, ensure_ascii=False))
 
     if args.discover_ble:
         from transport.windows_ble_client import run as run_discovery
