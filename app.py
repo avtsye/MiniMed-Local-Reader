@@ -28,6 +28,7 @@ def main():
         args.scan_test,
         args.discover_ble,
         args.monitor_ble,
+        args.mobile_emulator,
         args.simulate,
     )
     if not any(selected):
