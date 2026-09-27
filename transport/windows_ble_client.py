@@ -1,9 +1,19 @@
 """Passive Windows BLE discovery diagnostics.
 
-This module only listens to BLE advertisements. It does not connect, pair,
-read GATT data, write characteristics, or implement any pump protocol.
+Listens to advertisements only. No connection, pairing, GATT access, writes,
+or pump protocol are performed.
 """
 import asyncio
+
+def _hex_buffer(buffer):
+    try:
+        from winrt.windows.storage.streams import DataReader
+        reader = DataReader.from_buffer(buffer)
+        data = bytearray(reader.unconsumed_buffer_length)
+        reader.read_bytes(data)
+        return data.hex().upper()
+    except Exception:
+        return ""
 
 async def discover(seconds: int = 10, max_devices: int = 50) -> dict:
     if seconds < 1 or seconds > 120:
@@ -25,17 +35,34 @@ async def discover(seconds: int = 10, max_devices: int = 50) -> dict:
             address = int(args.bluetooth_address)
             key = f"{address:012X}"
             advertisement = args.advertisement
-            uuids = sorted({str(x) for x in advertisement.service_uuids})
-            name = str(advertisement.local_name or "")
-            current = devices.get(key)
+            manufacturers = []
+            for item in advertisement.manufacturer_data:
+                manufacturers.append({
+                    "company_id": int(item.company_id),
+                    "data_hex": _hex_buffer(item.data),
+                })
+            sections = []
+            for section in advertisement.data_sections:
+                sections.append({
+                    "data_type": int(section.data_type),
+                    "data_hex": _hex_buffer(section.data),
+                })
+
             item = {
                 "bluetooth_address": key,
+                "bluetooth_address_type": str(args.bluetooth_address_type),
                 "rssi": int(args.raw_signal_strength_in_dbm),
-                "local_name": name,
-                "service_uuids": uuids,
+                "local_name": str(advertisement.local_name or ""),
+                "service_uuids": sorted({str(x) for x in advertisement.service_uuids}),
+                "manufacturer_data": manufacturers,
+                "data_sections": sections,
             }
-            if current is None or item["rssi"] > current["rssi"]:
+            current = devices.get(key)
+            if current is None or len(str(item)) > len(str(current)):
                 devices[key] = item
+            else:
+                current["rssi"] = item["rssi"]
+
             if len(devices) > max_devices:
                 weakest = min(devices, key=lambda k: devices[k]["rssi"])
                 devices.pop(weakest, None)
