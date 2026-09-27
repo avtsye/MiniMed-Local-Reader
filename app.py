@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--discover-ble", action="store_true")
     parser.add_argument("--monitor-ble", action="store_true")
     parser.add_argument("--mobile-emulator", action="store_true")
+    parser.add_argument("--emulator-client", action="store_true")
     parser.add_argument("--session-demo", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
@@ -44,6 +45,7 @@ def main():
         print("  python app.py --discover-ble")
         print("  python app.py --monitor-ble")
         print("  python app.py --mobile-emulator")
+        print("  python app.py --emulator-client")
         print("  python app.py --session-demo")
         print("  python app.py --simulate")
         return
@@ -65,6 +67,11 @@ def main():
         from protocol.session_simulator import run_demo
         print("Running local read-only session simulator...")
         print(json.dumps(run_demo(args.db), indent=2, ensure_ascii=False))
+
+    if args.emulator_client:
+        from transport.windows_emulator_client import run as run_emulator_client
+        print("Connecting only to the project-owned BLE emulator (read-only)...")
+        print(json.dumps(run_emulator_client(args.seconds), indent=2, ensure_ascii=False))
 
     if args.mobile_emulator:
         from transport.windows_mobile_emulator import run as run_mobile_emulator
