@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--discover-ble", action="store_true")
     parser.add_argument("--monitor-ble", action="store_true")
     parser.add_argument("--mobile-emulator", action="store_true")
+    parser.add_argument("--session-demo", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
     parser.add_argument("--db", default="minimed_local.sqlite")
@@ -42,6 +43,7 @@ def main():
         print("  python app.py --discover-ble")
         print("  python app.py --monitor-ble")
         print("  python app.py --mobile-emulator")
+        print("  python app.py --session-demo")
         print("  python app.py --simulate")
         return
 
@@ -57,6 +59,11 @@ def main():
         from transport.windows_test_scanner import run as run_scan
         print("Scanning only for the project-owned GATT test UUID...")
         print(json.dumps(run_scan(args.seconds), indent=2, ensure_ascii=False))
+
+    if args.session_demo:
+        from protocol.session_simulator import run_demo
+        print("Running local read-only session simulator...")
+        print(json.dumps(run_demo(args.db), indent=2, ensure_ascii=False))
 
     if args.mobile_emulator:
         from transport.windows_mobile_emulator import run as run_mobile_emulator
