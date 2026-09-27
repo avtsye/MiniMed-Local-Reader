@@ -69,7 +69,7 @@ def main():
     if args.mobile_emulator:
         from transport.windows_mobile_emulator import run as run_mobile_emulator
         print("Starting project-owned Mobile-side BLE emulator (read-only)...")
-        print(json.dumps(run_mobile_emulator(args.seconds), indent=2, ensure_ascii=False))
+        print(json.dumps(run_mobile_emulator(args.seconds, args.db), indent=2, ensure_ascii=False))
 
     if args.monitor_ble:
         from transport.windows_ble_monitor import run as run_monitor
