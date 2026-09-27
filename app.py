@@ -41,7 +41,7 @@ def main():
     args = parser.parse_args()
 
     if not any(
-        (args.probe_windows, args.test_gatt, args.scan_test, args.simulate)
+        (args.probe_windows, args.test_gatt, args.scan_test, args.discover_ble, args.simulate)
     ):
         print("MiniMed Local Reader - Windows POC")
         print("Safety mode: READ-ONLY / diagnostics; pump protocol is disabled.")
@@ -49,7 +49,7 @@ def main():
         print("Run one of:")
         print("  python app.py --probe-windows")
         print("  python app.py --test-gatt")
-        print("  python app.py --scan-test")
+        print("  python app.py --scan-test")\n        print("  python app.py --discover-ble")
         print("  python app.py --simulate")
         return
 
@@ -69,6 +69,18 @@ def main():
         print(
             json.dumps(
                 run_gatt(args.seconds),
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+
+    if args.discover_ble:
+        from transport.windows_ble_client import run as run_discovery
+
+        print("Passive BLE discovery (no connections/writes)...")
+        print(
+            json.dumps(
+                run_discovery(args.seconds),
                 indent=2,
                 ensure_ascii=False,
             )
