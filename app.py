@@ -40,6 +40,8 @@ def main():
         args.loopback_test,
         args.pipeline_test,
         args.gui,
+        args.continuous_sim,
+        args.stress_sim is not None,
         args.session_demo,
         args.simulate,
     )
