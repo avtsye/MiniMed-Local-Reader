@@ -35,6 +35,7 @@ def main():
         args.test_gatt,
         args.scan_test,
         args.discover_ble,
+        args.discover_log,
         args.monitor_ble,
         args.mobile_emulator,
         args.emulator_client,
