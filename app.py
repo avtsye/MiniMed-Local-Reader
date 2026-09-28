@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--scan-test", action="store_true")
     parser.add_argument("--discover-ble", action="store_true")
     parser.add_argument("--discover-log", action="store_true")
+    parser.add_argument("--classify-ble", action="store_true")
     parser.add_argument("--monitor-ble", action="store_true")
     parser.add_argument("--mobile-emulator", action="store_true")
     parser.add_argument("--emulator-client", action="store_true")
@@ -57,6 +58,7 @@ def main():
         print("  python app.py --scan-test")
         print("  python app.py --discover-ble")
         print("  python app.py --discover-log")
+        print("  python app.py --classify-ble")
         print("  python app.py --monitor-ble")
         print("  python app.py --mobile-emulator")
         print("  python app.py --emulator-client")
@@ -125,6 +127,11 @@ def main():
         from transport.windows_ble_monitor import run as run_monitor
         print("Passive BLE signal monitor (no pairing/connections/writes)...")
         print(json.dumps(run_monitor(args.seconds), indent=2, ensure_ascii=False))
+
+    if args.classify_ble:
+        from protocol.ble_classifier import classify
+        print("Classifying stored passive BLE evidence (no connection)...")
+        print(json.dumps(classify(args.db), indent=2, ensure_ascii=False))
 
     if args.discover_log:
         from protocol.ble_discovery_bridge import run as run_discovery_log
