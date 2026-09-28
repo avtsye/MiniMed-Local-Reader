@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--emulator-client", action="store_true")
     parser.add_argument("--loopback-test", action="store_true")
     parser.add_argument("--pipeline-test", action="store_true")
+    parser.add_argument("--source-test", action="store_true")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--continuous-sim", action="store_true")
     parser.add_argument("--stress-sim", type=int, metavar="COUNT")
@@ -65,6 +66,7 @@ def main():
         print("  python app.py --emulator-client")
         print("  python app.py --loopback-test")
         print("  python app.py --pipeline-test")
+        print("  python app.py --source-test")
         print("  python app.py --gui")
         print("  python app.py --continuous-sim --seconds 60")
         print("  python app.py --stress-sim 1000")
@@ -103,6 +105,12 @@ def main():
     if args.gui:
         from ui.local_viewer import run as run_gui
         run_gui(args.db)
+
+    if args.source_test:
+        from datasource.synthetic import SyntheticDataSource
+        from datasource.ingest import ingest_once
+        print("Testing generic read-only data source ingest...")
+        print(json.dumps(ingest_once(SyntheticDataSource(), args.db), indent=2, ensure_ascii=False))
 
     if args.pipeline_test:
         from protocol.data_pipeline import run as run_pipeline
