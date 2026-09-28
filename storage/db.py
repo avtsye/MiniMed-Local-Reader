@@ -50,8 +50,7 @@ def save_sensor_reading(con, reading, source="simulator"):
 
 def save_device_status(con, status, source="simulator"):
     cur = con.execute(
-        "INSERT OR IGNORE INTO device_status(event_time,battery_percent,reservoir_units,source) VALUES(?,?,?,?,?)"
-        .replace("VALUES(?,?,?,?,?)", "VALUES(?,?,?,?)"),
+        "INSERT OR IGNORE INTO device_status(event_time,battery_percent,reservoir_units,source) VALUES(?,?,?,?)",
         (status.timestamp, status.battery_percent, status.reservoir_units, source),
     )
     con.commit()
