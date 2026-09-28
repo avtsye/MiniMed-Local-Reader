@@ -22,7 +22,7 @@ class HistorySgTests(unittest.TestCase):
             finally:con.close()
 
     def test_special_sg_is_not_invented(self):
-        payload=b"\\x00\\x00"+(0x0303).to_bytes(2,"little")+b"\\x00\\x00\\x00\\x00"
+        payload=(0).to_bytes(2,"little",signed=True)+(0x0303).to_bytes(2,"little")+(0).to_bytes(2,"little")+(0).to_bytes(2,"little",signed=True)
         x=decode_sg_measurement_payload(payload)
         self.assertIsNone(x["sg_value"])
         self.assertEqual(x["sg_state"],"sensor_updating")
