@@ -20,3 +20,28 @@ def decode_history_envelope(data):
     event_type=int.from_bytes(raw[:2],"little")
     return {"event_type":event_type,"event_name":KNOWN_EVENT_TYPES.get(event_type,"UNDEFINED"),
             "payload_hex":raw[2:].hex().upper(),"raw_hex":raw.hex().upper()}
+
+def decode_sg_measurement_payload(payload):
+    raw=bytes(payload)
+    if len(raw)!=8:
+        raise ValueError("SG measurement payload must be exactly 8 bytes")
+    offset=int.from_bytes(raw[0:2],"little",signed=True)
+    sg=int.from_bytes(raw[2:4],"little")
+    isig=int.from_bytes(raw[4:6],"little")
+    v_counter=int.from_bytes(raw[6:8],"little",signed=True)
+    special={0x0301:"sensor_starting",0x0303:"sensor_updating",0x0308:"above_400",0x030D:"below_50"}
+    return {
+        "time_offset_minutes":offset,
+        "sg_value":None if sg in special else sg,
+        "sg_state":special.get(sg,"value"),
+        "isig":isig,
+        "v_counter":v_counter,
+    }
+
+def decode_known_history_record(data):
+    envelope=decode_history_envelope(data)
+    payload=bytes.fromhex(envelope["payload_hex"])
+    decoded=None
+    if envelope["event_type"]==0xF00C:
+        decoded=decode_sg_measurement_payload(payload)
+    return {**envelope,"decoded":decoded}
