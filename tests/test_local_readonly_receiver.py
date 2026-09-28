@@ -6,7 +6,7 @@ from protocol.raw_capture import replay
 class LocalReceiverTests(unittest.TestCase):
     def test_parse_and_localhost_guard(self):
         ch,data,meta=parse_stream_line('{"channel":"cgm_measurement","hex":"0102"}')
-        self.assertEqual((ch,data),("cgm_measurement",b"\\x01\\x02"))
+        self.assertEqual((ch,data),("cgm_measurement",bytes([1,2])))
         with self.assertRaises(ValueError):LocalReadOnlyReceiver("x.jsonl","0.0.0.0",0)
 
     def test_stream_is_captured(self):
