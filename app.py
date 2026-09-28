@@ -21,6 +21,8 @@ def main():
     parser.add_argument("--loopback-test", action="store_true")
     parser.add_argument("--pipeline-test", action="store_true")
     parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--continuous-sim", action="store_true")
+    parser.add_argument("--stress-sim", type=int, metavar="COUNT")
     parser.add_argument("--session-demo", action="store_true")
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--simulate", action="store_true")
@@ -56,6 +58,8 @@ def main():
         print("  python app.py --loopback-test")
         print("  python app.py --pipeline-test")
         print("  python app.py --gui")
+        print("  python app.py --continuous-sim --seconds 60")
+        print("  python app.py --stress-sim 1000")
         print("  python app.py --session-demo")
         print("  python app.py --simulate")
         return
@@ -77,6 +81,16 @@ def main():
         from protocol.session_simulator import run_demo
         print("Running local read-only session simulator...")
         print(json.dumps(run_demo(args.db), indent=2, ensure_ascii=False))
+
+    if args.stress_sim is not None:
+        from simulator.continuous import run as run_continuous
+        print("Running synthetic stress simulation...")
+        print(json.dumps(run_continuous(args.db, stress_count=args.stress_sim), indent=2, ensure_ascii=False))
+
+    if args.continuous_sim:
+        from simulator.continuous import run as run_continuous
+        print("Running continuous synthetic data simulation...")
+        print(json.dumps(run_continuous(args.db, seconds=args.seconds), indent=2, ensure_ascii=False))
 
     if args.gui:
         from ui.local_viewer import run as run_gui
