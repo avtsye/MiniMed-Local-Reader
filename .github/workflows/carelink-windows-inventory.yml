@@ -1,4 +1,4 @@
-name: CareLink isolated Windows installation inventory
+name: CareLink isolated binary inspection
 on:
   push:
     paths:
@@ -9,9 +9,9 @@ permissions:
 jobs:
   inventory:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - name: Download and inspect on disposable runner
+      - name: Install and inspect actual installed files
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -19,78 +19,75 @@ jobs:
           $url = 'https://carelink.minimed.eu/tools/uploader/CareLinkUploader-ACC-7350-3.15.0-windows-installer.exe'
           $installer = Join-Path $env:RUNNER_TEMP 'carelink-installer.exe'
           Invoke-WebRequest -Uri $url -OutFile $installer -MaximumRedirection 5
-          Get-FileHash $installer -Algorithm SHA256 | Format-List | Out-File report/hash.txt
-          Get-Item $installer | Select-Object Name,Length | Format-List | Out-File report/size.txt
-          (Get-AuthenticodeSignature $installer | Select-Object Status,StatusMessage,@{N='Signer';E={$_.SignerCertificate.Subject}} | Format-List | Out-String) | Out-File report/signature.txt
-          $roots = @('C:\Program Files','C:\Program Files (x86)',"$env:LOCALAPPDATA\Programs")
+          Get-FileHash $installer -Algorithm SHA256 | Out-File report/installer-hash.txt
+          (Get-AuthenticodeSignature $installer | Format-List | Out-String) | Out-File report/installer-signature.txt
+          $roots = @('C:\Program Files','C:\Program Files (x86)',"$env:LOCALAPPDATA\Programs","$env:APPDATA")
           $before = @(foreach ($root in $roots) { if (Test-Path $root) { Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName } })
           $beforeServices = @(Get-Service | Select-Object -ExpandProperty Name)
           $beforeDrivers = @(Get-CimInstance Win32_SystemDriver | Select-Object -ExpandProperty Name)
-          # Run installer in a fresh disposable Windows runner, with no medical device attached.
-          # Quiet switches are best effort; enforce timeout and never interact with hardware.
-          $p = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -ErrorAction Stop
+          $p = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru
           if (-not $p.WaitForExit(180000)) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-            'Installer timed out after 180 seconds' | Out-File report/install-status.txt
+            'Timed out after 180 seconds' | Out-File report/install-status.txt
           } else {
-            "Installer exit code: $($p.ExitCode)" | Out-File report/install-status.txt
+            "Exit code: $($p.ExitCode)" | Out-File report/install-status.txt
           }
           $after = @(foreach ($root in $roots) { if (Test-Path $root) { Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName } })
           $newFiles = @(Compare-Object $before $after | Where-Object SideIndicator -eq '=>' | Select-Object -ExpandProperty InputObject)
           $newFiles | Sort-Object | Out-File report/installed-files.txt
-          $newFiles | Where-Object { $_ -match '(?i)carelink|medtronic|usb|serial|bluetooth|driver|\.dll$|\.sys$|\.jar$|\.json$|\.xml$' } | Out-File report/relevant-files.txt
-          Compare-Object $beforeServices @(Get-Service | Select-Object -ExpandProperty Name) | Out-File report/new-services.txt
-          Compare-Object $beforeDrivers @(Get-CimInstance Win32_SystemDriver | Select-Object -ExpandProperty Name) | Out-File report/new-drivers.txt
-          $newFiles | Where-Object { Test-Path $_ } | ForEach-Object {
-            $f = Get-Item $_ -ErrorAction SilentlyContinue
-            if ($f) { [pscustomobject]@{Path=$f.FullName; Size=$f.Length; Product=$f.VersionInfo.ProductName; Version=$f.VersionInfo.ProductVersion} }
-          } | Export-Csv report/file-metadata.csv -NoTypeInformation -Encoding UTF8
-          # Examine actual installed files locally before the disposable runner is destroyed.
-          # Only derived metadata is uploaded; no proprietary executables or libraries.
-          $newFiles = @($newFiles | Where-Object { Test-Path -LiteralPath $_ })
-          $interesting = @($newFiles | Where-Object { $_ -match '(?i)carelink|medtronic|\\.(exe|dll|sys|jar|inf|json|xml|config|properties)
-      - name: Upload static analysis reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: carelink-windows-inventory
-          path: report/
-          retention-days: 7
- })
-          $interesting | ForEach-Object {
-            $path = $_
-            $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
-            if ($item) {
-              $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
-              [pscustomobject]@{Path=$path; Bytes=$item.Length; SHA256=$hash; Description=$item.VersionInfo.FileDescription; Product=$item.VersionInfo.ProductName; Version=$item.VersionInfo.ProductVersion}
+          Compare-Object $beforeServices @(Get-Service | Select-Object -ExpandProperty Name) | Out-File report/services-diff.txt
+          Compare-Object $beforeDrivers @(Get-CimInstance Win32_SystemDriver | Select-Object -ExpandProperty Name) | Out-File report/drivers-diff.txt
+          $newFiles | ForEach-Object {
+            $f = Get-Item -LiteralPath $_ -ErrorAction SilentlyContinue
+            if ($f) {
+              $hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
+              [pscustomobject]@{Path=$f.FullName;Bytes=$f.Length;SHA256=$hash;Product=$f.VersionInfo.ProductName;Version=$f.VersionInfo.ProductVersion;Description=$f.VersionInfo.FileDescription}
             }
-          } | Export-Csv report/installed-binary-hashes.csv -NoTypeInformation -Encoding utf8
-          $patterns = '(?i)carelink|medtronic|usb|bluetooth|serial|hid|winusb|driver|interface|endpoint|com[0-9]+'
-          $hits = [System.Collections.Generic.List[object]]::new()
-          foreach ($path in ($interesting | Select-Object -First 120)) {
-            $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
-            if (-not $item -or $item.Length -gt 40000000 -or $item.Length -eq 0) { continue }
-            try {
-              $bytes = [System.IO.File]::ReadAllBytes($path)
-              $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-              $unicode = [System.Text.Encoding]::Unicode.GetString($bytes)
-              foreach ($encodingText in @($ascii,$unicode)) {
-                $matches = [regex]::Matches($encodingText, '[ -~]{5,180}')
-                foreach ($m in $matches) {
-                  if ($m.Value -match $patterns -and $hits.Count -lt 500) {
-                    $hits.Add([pscustomobject]@{File=$path; Text=$m.Value.Substring(0,[Math]::Min(180,$m.Value.Length))})
-                  }
-                }
-              }
-            } catch { }
-          }
-          $hits | Export-Csv report/static-string-indicators.csv -NoTypeInformation -Encoding utf8
-          "Files examined: $($interesting.Count); indicator rows: $($hits.Count)" | Out-File report/static-analysis-summary.txt
+          } | Export-Csv report/installed-file-analysis.csv -NoTypeInformation -Encoding utf8
+          $env:CARELINK_SCAN_LIST = (Join-Path (Get-Location) 'report/installed-files.txt')
+          $env:CARELINK_REPORT_DIR = (Join-Path (Get-Location) 'report')
+          python -m pip -q install pefile
+          @'
+          import csv, os, pathlib, re, hashlib
+          import pefile
+          paths = pathlib.Path(os.environ['CARELINK_SCAN_LIST']).read_text(encoding='utf-16', errors='replace').splitlines()
+          out = pathlib.Path(os.environ['CARELINK_REPORT_DIR'])
+          rows, imports, exports, indicators = [], [], [], []
+          words = re.compile(rb'(?i)(?:usb|hid|ftdi|d2xx|vcp|bluetooth|serial|medtronic|carelink)')
+          for path in paths:
+              p = pathlib.Path(path.strip())
+              if not p.is_file(): continue
+              try:
+                  data = p.read_bytes()
+                  rows.append([str(p),len(data),hashlib.sha256(data).hexdigest(),data[:16].hex()])
+                  if p.suffix.lower() in ('.exe','.dll','.sys'):
+                      try:
+                          pe = pefile.PE(data=data, fast_load=True)
+                          pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT']])
+                          for group in getattr(pe,'DIRECTORY_ENTRY_IMPORT',[]):
+                              imports.append([str(p),group.dll.decode(errors='replace'),';'.join((x.name or b'').decode(errors='replace') for x in group.imports)[:3000]])
+                          if hasattr(pe,'DIRECTORY_ENTRY_EXPORT'):
+                              for item in pe.DIRECTORY_ENTRY_EXPORT.symbols[:500]:
+                                  exports.append([str(p),(item.name or b'').decode(errors='replace')])
+                      except Exception as e: indicators.append([str(p),'PE parse error',str(e)[:200]])
+                  # Inspect bytes themselves, but export only limited, non-sensitive indicators.
+                  if len(data) <= 30000000:
+                      for match in list(words.finditer(data))[:60]:
+                          start=max(0,match.start()-35); end=min(len(data),match.end()+65)
+                          snippet=data[start:end]
+                          printable=''.join(chr(b) if 32<=b<=126 else ' ' for b in snippet)
+                          indicators.append([str(p),'binary match',printable[:130]])
+              except Exception as e: indicators.append([str(p),'read error',str(e)[:200]])
+          for name,head,content in [('binary-signatures.csv',['path','bytes','sha256','first16hex'],rows),('pe-imports.csv',['path','library','imported_functions'],imports),('pe-exports.csv',['path','exported_symbol'],exports),('binary-indicators.csv',['path','type','indicator'],indicators)]:
+              with (out/name).open('w',newline='',encoding='utf-8-sig') as f:
+                  w=csv.writer(f);w.writerow(head);w.writerows(content)
+          (out/'scan-summary.txt').write_text(f'Files: {len(rows)}; imports: {len(imports)}; exports: {len(exports)}; indicators: {len(indicators)}\n',encoding='utf-8')
+          '@ | python -
           Remove-Item $installer -Force -ErrorAction SilentlyContinue
-      - name: Upload text reports only
+      - name: Upload binary inspection reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: carelink-windows-inventory
+          name: carelink-binary-inspection
           path: report/
           retention-days: 7
