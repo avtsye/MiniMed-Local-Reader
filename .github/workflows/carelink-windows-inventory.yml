@@ -1,0 +1,55 @@
+name: CareLink isolated Windows installation inventory
+on:
+  push:
+    paths:
+      - '.github/workflows/carelink-windows-inventory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download and inspect on disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force report | Out-Null
+          $url = 'https://carelink.minimed.eu/tools/uploader/CareLinkUploader-ACC-7350-3.15.0-windows-installer.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'carelink-installer.exe'
+          Invoke-WebRequest -Uri $url -OutFile $installer -MaximumRedirection 5
+          Get-FileHash $installer -Algorithm SHA256 | Format-List | Out-File report/hash.txt
+          Get-Item $installer | Select-Object Name,Length | Format-List | Out-File report/size.txt
+          (Get-AuthenticodeSignature $installer | Select-Object Status,StatusMessage,@{N='Signer';E={$_.SignerCertificate.Subject}} | Format-List | Out-String) | Out-File report/signature.txt
+          $roots = @('C:\Program Files','C:\Program Files (x86)',"$env:LOCALAPPDATA\Programs")
+          $before = @(foreach ($root in $roots) { if (Test-Path $root) { Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName } })
+          $beforeServices = @(Get-Service | Select-Object -ExpandProperty Name)
+          $beforeDrivers = @(Get-CimInstance Win32_SystemDriver | Select-Object -ExpandProperty Name)
+          # Run installer in a fresh disposable Windows runner, with no medical device attached.
+          # Quiet switches are best effort; enforce timeout and never interact with hardware.
+          $p = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -ErrorAction Stop
+          if (-not $p.WaitForExit(180000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            'Installer timed out after 180 seconds' | Out-File report/install-status.txt
+          } else {
+            "Installer exit code: $($p.ExitCode)" | Out-File report/install-status.txt
+          }
+          $after = @(foreach ($root in $roots) { if (Test-Path $root) { Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName } })
+          $newFiles = @(Compare-Object $before $after | Where-Object SideIndicator -eq '=>' | Select-Object -ExpandProperty InputObject)
+          $newFiles | Sort-Object | Out-File report/installed-files.txt
+          $newFiles | Where-Object { $_ -match '(?i)carelink|medtronic|usb|serial|bluetooth|driver|\.dll$|\.sys$|\.jar$|\.json$|\.xml$' } | Out-File report/relevant-files.txt
+          Compare-Object $beforeServices @(Get-Service | Select-Object -ExpandProperty Name) | Out-File report/new-services.txt
+          Compare-Object $beforeDrivers @(Get-CimInstance Win32_SystemDriver | Select-Object -ExpandProperty Name) | Out-File report/new-drivers.txt
+          $newFiles | Where-Object { Test-Path $_ } | ForEach-Object {
+            $f = Get-Item $_ -ErrorAction SilentlyContinue
+            if ($f) { [pscustomobject]@{Path=$f.FullName; Size=$f.Length; Product=$f.VersionInfo.ProductName; Version=$f.VersionInfo.ProductVersion} }
+          } | Export-Csv report/file-metadata.csv -NoTypeInformation -Encoding UTF8
+          Remove-Item $installer -Force -ErrorAction SilentlyContinue
+      - name: Upload text reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carelink-windows-inventory
+          path: report/
+          retention-days: 7
