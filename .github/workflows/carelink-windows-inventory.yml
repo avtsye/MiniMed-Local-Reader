@@ -45,6 +45,47 @@ jobs:
             $f = Get-Item $_ -ErrorAction SilentlyContinue
             if ($f) { [pscustomobject]@{Path=$f.FullName; Size=$f.Length; Product=$f.VersionInfo.ProductName; Version=$f.VersionInfo.ProductVersion} }
           } | Export-Csv report/file-metadata.csv -NoTypeInformation -Encoding UTF8
+          # Examine actual installed files locally before the disposable runner is destroyed.
+          # Only derived metadata is uploaded; no proprietary executables or libraries.
+          $newFiles = @($newFiles | Where-Object { Test-Path -LiteralPath $_ })
+          $interesting = @($newFiles | Where-Object { $_ -match '(?i)carelink|medtronic|\\.(exe|dll|sys|jar|inf|json|xml|config|properties)
+      - name: Upload static analysis reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carelink-windows-inventory
+          path: report/
+          retention-days: 7
+ })
+          $interesting | ForEach-Object {
+            $path = $_
+            $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+            if ($item) {
+              $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
+              [pscustomobject]@{Path=$path; Bytes=$item.Length; SHA256=$hash; Description=$item.VersionInfo.FileDescription; Product=$item.VersionInfo.ProductName; Version=$item.VersionInfo.ProductVersion}
+            }
+          } | Export-Csv report/installed-binary-hashes.csv -NoTypeInformation -Encoding utf8
+          $patterns = '(?i)carelink|medtronic|usb|bluetooth|serial|hid|winusb|driver|interface|endpoint|com[0-9]+'
+          $hits = [System.Collections.Generic.List[object]]::new()
+          foreach ($path in ($interesting | Select-Object -First 120)) {
+            $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+            if (-not $item -or $item.Length -gt 40000000 -or $item.Length -eq 0) { continue }
+            try {
+              $bytes = [System.IO.File]::ReadAllBytes($path)
+              $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
+              $unicode = [System.Text.Encoding]::Unicode.GetString($bytes)
+              foreach ($encodingText in @($ascii,$unicode)) {
+                $matches = [regex]::Matches($encodingText, '[ -~]{5,180}')
+                foreach ($m in $matches) {
+                  if ($m.Value -match $patterns -and $hits.Count -lt 500) {
+                    $hits.Add([pscustomobject]@{File=$path; Text=$m.Value.Substring(0,[Math]::Min(180,$m.Value.Length))})
+                  }
+                }
+              }
+            } catch { }
+          }
+          $hits | Export-Csv report/static-string-indicators.csv -NoTypeInformation -Encoding utf8
+          "Files examined: $($interesting.Count); indicator rows: $($hits.Count)" | Out-File report/static-analysis-summary.txt
           Remove-Item $installer -Force -ErrorAction SilentlyContinue
       - name: Upload text reports only
         if: always()
