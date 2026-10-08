@@ -1,0 +1,46 @@
+name: CareLink installer static inventory
+on:
+  push:
+    paths:
+      - '.github/workflows/carelink-static-inventory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download and inspect metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          URL='https://carelink.minimed.eu/tools/uploader/CareLinkUploader-ACC-7350-3.15.0-windows-installer.exe'
+          curl --fail --location --retry 2 --connect-timeout 20 --max-time 240 --output /tmp/carelink-installer.exe "$URL"
+          sha256sum /tmp/carelink-installer.exe > report/sha256.txt
+          file /tmp/carelink-installer.exe > report/file-type.txt
+          stat -c '%s bytes' /tmp/carelink-installer.exe > report/size.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          p=Path('/tmp/carelink-installer.exe')
+          with p.open('rb') as f:
+              head=f.read(1024)
+          with open('report/pe-summary.txt','w') as out:
+              out.write('MZ header: '+str(head[:2]==b'MZ')+'\n')
+              if head[:2]==b'MZ':
+                  offset=struct.unpack_from('<I',head,0x3c)[0]
+                  with p.open('rb') as f:
+                      f.seek(offset)
+                      signature=f.read(4)
+                  out.write('PE signature: '+str(signature==b'PE\\0\\0')+'\n')
+          PY
+          rm -f /tmp/carelink-installer.exe
+      - name: Upload text-only report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carelink-static-inventory
+          path: report/
+          retention-days: 7
