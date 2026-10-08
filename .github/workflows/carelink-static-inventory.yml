@@ -9,35 +9,49 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
-      - name: Download and inspect metadata only
+      - name: Download and analyze installer locally
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p report
+          mkdir -p report /tmp/carelink-extracted
           URL='https://carelink.minimed.eu/tools/uploader/CareLinkUploader-ACC-7350-3.15.0-windows-installer.exe'
-          curl --fail --location --retry 2 --connect-timeout 20 --max-time 240 --output /tmp/carelink-installer.exe "$URL"
+          curl --fail --location --retry 2 --connect-timeout 20 --max-time 300 --output /tmp/carelink-installer.exe "$URL"
           sha256sum /tmp/carelink-installer.exe > report/sha256.txt
           file /tmp/carelink-installer.exe > report/file-type.txt
           stat -c '%s bytes' /tmp/carelink-installer.exe > report/size.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full
+          7z l -slt /tmp/carelink-installer.exe > report/archive-listing.txt 2>report/archive-errors.txt || true
+          if 7z t /tmp/carelink-installer.exe > report/archive-test.txt 2>&1; then
+            7z x -y -o/tmp/carelink-extracted /tmp/carelink-installer.exe > report/extract-log.txt 2>&1 || true
+          else
+            echo 'Installer not recognized as a directly extractable archive' > report/extract-log.txt
+          fi
           python3 - <<'PY'
           from pathlib import Path
-          import struct
-          p=Path('/tmp/carelink-installer.exe')
-          with p.open('rb') as f:
-              head=f.read(1024)
-          with open('report/pe-summary.txt','w') as out:
-              out.write('MZ header: '+str(head[:2]==b'MZ')+'\n')
-              if head[:2]==b'MZ':
-                  offset=struct.unpack_from('<I',head,0x3c)[0]
-                  with p.open('rb') as f:
-                      f.seek(offset)
-                      signature=f.read(4)
-                  out.write('PE signature: '+str(signature==b'PE\\0\\0')+'\n')
+          from collections import Counter
+          root=Path('/tmp/carelink-extracted')
+          files=[p for p in root.rglob('*') if p.is_file()]
+          with open('report/extracted-inventory.txt','w',encoding='utf-8') as out:
+              out.write(f'Extracted files: {len(files)}\n')
+              for p in sorted(files)[:10000]:
+                  out.write(f'{p.relative_to(root)}\t{p.stat().st_size}\n')
+          with open('report/extensions.txt','w',encoding='utf-8') as out:
+              for ext,count in Counter(p.suffix.lower() or '[none]' for p in files).most_common():
+                  out.write(f'{ext}: {count}\n')
+          with open('report/relevant-filenames.txt','w',encoding='utf-8') as out:
+              for p in files:
+                  if any(word in p.name.lower() for word in ('usb','serial','bluetooth','driver','carelink','export','upload','json','sqlite','lib')):
+                      out.write(str(p.relative_to(root))+'\n')
           PY
-          rm -f /tmp/carelink-installer.exe
-      - name: Upload text-only report
+      - name: Delete installer and extracted files after analysis
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/carelink-installer.exe /tmp/carelink-extracted
+      - name: Upload text-only reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
